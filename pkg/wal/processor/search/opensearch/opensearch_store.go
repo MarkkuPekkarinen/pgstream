@@ -16,15 +16,17 @@ import (
 )
 
 type Store struct {
-	logger    loglib.Logger
-	client    es.SearchClient
-	mapper    search.Mapper
-	adapter   Adapter
-	marshaler func(any) ([]byte, error)
+	logger             loglib.Logger
+	client             es.SearchClient
+	mapper             search.Mapper
+	adapter            Adapter
+	marshaler          func(any) ([]byte, error)
+	useImmutableFields bool
 }
 
 type Config struct {
-	URL string
+	URL                    string
+	DisableImmutableFields bool
 }
 
 type Option func(*Store)
@@ -44,7 +46,7 @@ func NewStore(cfg Config, opts ...Option) (*Store, error) {
 		return nil, fmt.Errorf("create elasticsearch client: %w", err)
 	}
 
-	s := NewStoreWithClient(os)
+	s := NewStoreWithClient(cfg, os)
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -52,13 +54,14 @@ func NewStore(cfg Config, opts ...Option) (*Store, error) {
 	return s, nil
 }
 
-func NewStoreWithClient(client es.SearchClient) *Store {
+func NewStoreWithClient(cfg Config, client es.SearchClient) *Store {
 	return &Store{
-		logger:    loglib.NewNoopLogger(),
-		client:    client,
-		adapter:   newDefaultAdapter(),
-		mapper:    NewPostgresMapper(),
-		marshaler: json.Marshal,
+		logger:             loglib.NewNoopLogger(),
+		client:             client,
+		adapter:            newDefaultAdapter(),
+		mapper:             NewPostgresMapper(),
+		marshaler:          json.Marshal,
+		useImmutableFields: !cfg.DisableImmutableFields,
 	}
 }
 
@@ -385,7 +388,7 @@ func (s *Store) updateMappingAddNewColumns(ctx context.Context, indexName IndexN
 		}
 
 		if mapping != nil {
-			properties[c.PgstreamID] = mapping
+			properties[s.mappingField(c)] = mapping
 		}
 	}
 
@@ -438,6 +441,13 @@ func (s *Store) ensureSchemaMapping(ctx context.Context, schemaName string, meta
 		}
 	}
 	return nil
+}
+
+func (s *Store) mappingField(col schemalog.Column) string {
+	if s.useImmutableFields {
+		return col.PgstreamID
+	}
+	return col.Name
 }
 
 func mapError(err error) error {

@@ -19,20 +19,22 @@ type walAdapter interface {
 }
 
 type adapter struct {
-	mapper      Mapper
-	marshaler   func(any) ([]byte, error)
-	unmarshaler func([]byte, any) error
-	lsnParser   replication.LSNParser
+	mapper             Mapper
+	marshaler          func(any) ([]byte, error)
+	unmarshaler        func([]byte, any) error
+	lsnParser          replication.LSNParser
+	useImmutableFields bool
 }
 
 var errUnsupportedType = errors.New("type not supported for column")
 
-func newAdapter(m Mapper, parser replication.LSNParser) *adapter {
+func newAdapter(m Mapper, parser replication.LSNParser, disableImmutableFields bool) *adapter {
 	return &adapter{
-		mapper:      m,
-		marshaler:   json.Marshal,
-		unmarshaler: json.Unmarshal,
-		lsnParser:   parser,
+		mapper:             m,
+		marshaler:          json.Marshal,
+		unmarshaler:        json.Unmarshal,
+		lsnParser:          parser,
+		useImmutableFields: !disableImmutableFields,
 	}
 }
 
@@ -147,7 +149,7 @@ func (a *adapter) walDataToDocument(data *wal.Data) (*Document, error) {
 			if data.Metadata.IsIDColumn(col.ID) || data.Metadata.IsVersionColumn(col.ID) {
 				continue
 			}
-			if _, exists := doc.Data[col.ID]; !exists {
+			if _, exists := doc.Data[a.documentField(col)]; !exists {
 				parsedColumn, err := a.mapper.MapColumnValue(schemalog.Column{
 					Name:       col.Name,
 					DataType:   col.Type,
@@ -160,7 +162,7 @@ func (a *adapter) walDataToDocument(data *wal.Data) (*Document, error) {
 					}
 					return nil, err
 				}
-				doc.Data[col.ID] = parsedColumn
+				doc.Data[a.documentField(col)] = parsedColumn
 			}
 		}
 
@@ -205,7 +207,7 @@ func (a *adapter) parseColumns(columns []wal.Column, metadata wal.Metadata, lsnS
 				}
 				return nil, err
 			}
-			doc.Data[col.ID] = parsedColumn
+			doc.Data[a.documentField(col)] = parsedColumn
 		}
 	}
 
@@ -276,7 +278,7 @@ func (a *adapter) parseIDColumns(tableName string, idColumns []wal.Column, doc *
 			if err != nil {
 				return fmt.Errorf("mapping id column value: %w", err)
 			}
-			doc.Data[col.ID] = parsedColumn
+			doc.Data[a.documentField(col)] = parsedColumn
 		}
 	}
 
@@ -303,6 +305,13 @@ func (a *adapter) documentSize(doc *Document) (int, error) {
 		return 0, err
 	}
 	return len(bytes), nil
+}
+
+func (a *adapter) documentField(col wal.Column) string {
+	if a.useImmutableFields {
+		return col.ID
+	}
+	return col.Name
 }
 
 // roundFloat64 converts a float64 to int by rounding.

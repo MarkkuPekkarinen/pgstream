@@ -151,7 +151,7 @@ func TestAdapter_walEventToMsg(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			a := newAdapter(noopMapper, testLSNParser)
+			a := newAdapter(noopMapper, testLSNParser, false)
 
 			if tc.marshaler != nil {
 				a.marshaler = tc.marshaler
@@ -229,7 +229,7 @@ func TestAdapter_walDataToLogEntry(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			a := newAdapter(&searchmocks.Mapper{}, &replicationmocks.LSNParser{})
+			a := newAdapter(&searchmocks.Mapper{}, &replicationmocks.LSNParser{}, false)
 			if tc.marshaler != nil {
 				a.marshaler = tc.marshaler
 			}
@@ -260,9 +260,10 @@ func TestAdapter_walDataToDocument(t *testing.T) {
 	}
 
 	tests := []struct {
-		name   string
-		mapper Mapper
-		data   *wal.Data
+		name                   string
+		mapper                 Mapper
+		data                   *wal.Data
+		disableImmutableFields bool
 
 		wantDoc *Document
 		wantErr error
@@ -298,6 +299,14 @@ func TestAdapter_walDataToDocument(t *testing.T) {
 				},
 			},
 			wantErr: nil,
+		},
+		{
+			name:                   "ok - insert event with immutable fields disabled",
+			mapper:                 noopMapper,
+			data:                   newTestDataEvent("I").Data,
+			disableImmutableFields: true,
+			wantDoc:                newTestDocument(withImmutableNamesDisabled()),
+			wantErr:                nil,
 		},
 		{
 			name: "ok - insert event with identity columns and invalid type",
@@ -415,7 +424,7 @@ func TestAdapter_walDataToDocument(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			a := newAdapter(tc.mapper, testLSNParser)
+			a := newAdapter(tc.mapper, testLSNParser, tc.disableImmutableFields)
 			doc, err := a.walDataToDocument(tc.data)
 			require.ErrorIs(t, err, tc.wantErr)
 			require.Equal(t, tc.wantDoc, doc)
@@ -608,7 +617,7 @@ func TestAdapter_parseColumns(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			a := newAdapter(tc.mapper, testLSNParser)
+			a := newAdapter(tc.mapper, testLSNParser, false)
 			if tc.parser != nil {
 				a.lsnParser = tc.parser
 			}
@@ -728,7 +737,8 @@ func TestAdapter_parseIDColumns(t *testing.T) {
 			t.Parallel()
 
 			a := &adapter{
-				mapper: noopMapper,
+				mapper:             noopMapper,
+				useImmutableFields: true,
 			}
 			doc := newDoc("")
 			err := a.parseIDColumns(testTable, tc.idColumns, doc)

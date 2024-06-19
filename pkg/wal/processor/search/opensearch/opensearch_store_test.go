@@ -188,7 +188,7 @@ func TestStore_ApplySchemaChange(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			s := NewStoreWithClient(tc.client)
+			s := NewStoreWithClient(Config{}, tc.client)
 			s.adapter = testAdapter
 			s.mapper = testMapper
 
@@ -275,7 +275,7 @@ func TestStore_SendDocuments(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			s := NewStoreWithClient(tc.client)
+			s := NewStoreWithClient(Config{}, tc.client)
 
 			errDocs, err := s.SendDocuments(context.Background(), testDocs)
 			require.ErrorIs(t, err, tc.wantErr)
@@ -405,7 +405,7 @@ func TestStore_DeleteSchema(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			s := NewStoreWithClient(tc.client)
+			s := NewStoreWithClient(Config{}, tc.client)
 			err := s.DeleteSchema(context.Background(), testSchemaName)
 			require.ErrorIs(t, err, tc.wantErr)
 		})
@@ -484,7 +484,7 @@ func TestStore_DeleteTableDocuments(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			s := NewStoreWithClient(tc.client)
+			s := NewStoreWithClient(Config{}, tc.client)
 			err := s.DeleteTableDocuments(context.Background(), testSchemaName, tc.tableIDs)
 			require.ErrorIs(t, err, tc.wantErr)
 		})
@@ -666,7 +666,7 @@ func TestStore_getLastSchemaLogEntry(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			s := NewStoreWithClient(tc.client)
+			s := NewStoreWithClient(Config{}, tc.client)
 			if tc.adapter != nil {
 				s.adapter = tc.adapter
 			}
@@ -741,7 +741,7 @@ func TestStore_createSchema(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			s := NewStoreWithClient(tc.client)
+			s := NewStoreWithClient(Config{}, tc.client)
 
 			err := s.createSchema(context.Background(), testSchemaName)
 			require.ErrorIs(t, err, tc.wantErr)
@@ -766,10 +766,11 @@ func TestStore_updateMapping(t *testing.T) {
 	errTest := errors.New("oh noes")
 
 	tests := []struct {
-		name   string
-		client es.SearchClient
-		diff   *schemalog.SchemaDiff
-		mapper search.Mapper
+		name                   string
+		client                 es.SearchClient
+		diff                   *schemalog.SchemaDiff
+		mapper                 search.Mapper
+		disableImmutableFields bool
 
 		wantErr error
 	}{
@@ -808,6 +809,39 @@ func TestStore_updateMapping(t *testing.T) {
 					return errors.New("DeleteByQueryFn: should not be called")
 				},
 			},
+			diff: &schemalog.SchemaDiff{
+				ColumnsToAdd: []schemalog.Column{
+					{Name: "col-1", PgstreamID: "pgstreamid-1"},
+				},
+			},
+			mapper: &searchmocks.Mapper{
+				ColumnToSearchMappingFn: func(column schemalog.Column) (map[string]any, error) {
+					return testMapping, nil
+				},
+			},
+
+			wantErr: nil,
+		},
+		{
+			name: "ok - diff with columns to add, immutable fields disabled",
+			client: &esmocks.Client{
+				PutIndexMappingsFn: func(ctx context.Context, index string, body map[string]any) error {
+					require.Equal(t, testIndexName, index)
+					require.Equal(t, map[string]any{
+						"properties": map[string]any{
+							"col-1": testMapping,
+						},
+					}, body)
+					return nil
+				},
+				IndexWithIDFn: func(ctx context.Context, req *es.IndexWithIDRequest) error {
+					return nil
+				},
+				DeleteByQueryFn: func(ctx context.Context, req *es.DeleteByQueryRequest) error {
+					return errors.New("DeleteByQueryFn: should not be called")
+				},
+			},
+			disableImmutableFields: true,
 			diff: &schemalog.SchemaDiff{
 				ColumnsToAdd: []schemalog.Column{
 					{Name: "col-1", PgstreamID: "pgstreamid-1"},
@@ -918,7 +952,9 @@ func TestStore_updateMapping(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			s := NewStoreWithClient(tc.client)
+			s := NewStoreWithClient(Config{
+				DisableImmutableFields: tc.disableImmutableFields,
+			}, tc.client)
 			if tc.mapper != nil {
 				s.mapper = tc.mapper
 			}

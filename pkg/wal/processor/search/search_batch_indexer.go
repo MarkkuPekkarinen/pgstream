@@ -54,7 +54,7 @@ func NewBatchIndexer(ctx context.Context, config IndexerConfig, store Store, lsn
 		skipSchema:        func(string) bool { return false },
 		batchSize:         config.batchSize(),
 		batchSendInterval: config.batchTime(),
-		adapter:           newAdapter(store.GetMapper(), lsnParser),
+		adapter:           newAdapter(store.GetMapper(), lsnParser, config.DisableImmutableFields),
 		msgChan:           make(chan *msg),
 	}
 

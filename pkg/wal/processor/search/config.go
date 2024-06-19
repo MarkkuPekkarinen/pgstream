@@ -21,6 +21,11 @@ type IndexerConfig struct {
 	// CleanupBackoff is the retry policy to follow for the async index
 	// deletion. If no config is provided, no retry policy is applied.
 	CleanupBackoff backoff.Config
+	// DisableImmutableFields will stop using immutable fields for the search
+	// documents if enabled. Use of immutable fields guarantees no data
+	// reindexing is required when a table column is renamed, since an immutable
+	// id is used instead of the field name for the mapping. Defaults to false.
+	DisableImmutableFields bool
 }
 
 const (

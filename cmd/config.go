@@ -156,14 +156,18 @@ func parseSearchProcessorConfig() *stream.SearchProcessorConfig {
 		return nil
 	}
 
+	disableImmutableFields := viper.GetBool("PGSTREAM_SEARCH_DISABLE_IMMUTABLE_FIELDS")
+
 	return &stream.SearchProcessorConfig{
 		Indexer: search.IndexerConfig{
-			BatchSize:      viper.GetInt("PGSTREAM_SEARCH_INDEXER_BATCH_SIZE"),
-			BatchTime:      viper.GetDuration("PGSTREAM_SEARCH_INDEXER_BATCH_TIMEOUT"),
-			CleanupBackoff: parseBackoffConfig("PGSTREAM_SEARCH_INDEXER_CLEANUP"),
+			BatchSize:              viper.GetInt("PGSTREAM_SEARCH_INDEXER_BATCH_SIZE"),
+			BatchTime:              viper.GetDuration("PGSTREAM_SEARCH_INDEXER_BATCH_TIMEOUT"),
+			CleanupBackoff:         parseBackoffConfig("PGSTREAM_SEARCH_INDEXER_CLEANUP"),
+			DisableImmutableFields: disableImmutableFields,
 		},
 		Store: opensearch.Config{
-			URL: searchStore,
+			URL:                    searchStore,
+			DisableImmutableFields: disableImmutableFields,
 		},
 		Retrier: &search.StoreRetryConfig{
 			Backoff: parseBackoffConfig("PGSTREAM_SEARCH_STORE"),

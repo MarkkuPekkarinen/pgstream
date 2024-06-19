@@ -132,6 +132,15 @@ func withID(id string) testDocOption {
 	}
 }
 
+func withImmutableNamesDisabled() testDocOption {
+	return func(d *Document) {
+		d.Data = map[string]any{
+			"_table": testTableID,
+			"name":   "a",
+		}
+	}
+}
+
 func newTestDocument(opts ...testDocOption) *Document {
 	doc := &Document{
 		Schema:  testSchemaName,
